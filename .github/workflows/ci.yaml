@@ -36,18 +36,20 @@ jobs:
     runs-on: ubuntu-latest
     needs: test
     steps:
-      - name: Set up SSHss
-        uses: webfactory/ssh-agent@v0.6.0
-        with:
-          ssh-private-key: ${{ secrets.SSH_KEY }}
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
 
       - name: Debug SSH connection
         run: |
-          ssh -v -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} "echo 'SSH connection test successful'" || { echo "SSH connection failed"; exit 1; }
+          ssh -v -o StrictHostKeyChecking=no test@${{ secrets.SERVER_IP }} "echo 'SSH connection test successful'" || { echo "SSH connection failed"; exit 1; }
 
       - name: Check DEPLOY_DIR permissions
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+          ssh -o StrictHostKeyChecking=no test@${{ secrets.SERVER_IP }} << 'EOF'
             echo "Checking DEPLOY_DIR: ${{ secrets.DEPLOY_DIR }}"
             if [ -d "${{ secrets.DEPLOY_DIR }}" ]; then
               echo "Directory exists, checking permissions:"
@@ -55,7 +57,7 @@ jobs:
             else
               echo "Directory does not exist, creating..."
               mkdir -p ${{ secrets.DEPLOY_DIR }} || { echo "Failed to create directory"; exit 1; }
-              chown ${{ secrets.SSH_USER }}:${{ secrets.SSH_USER }} ${{ secrets.DEPLOY_DIR }}
+              chown test:test ${{ secrets.DEPLOY_DIR }}
               ls -ld ${{ secrets.DEPLOY_DIR }}
             fi
           EOF
@@ -64,8 +66,8 @@ jobs:
         run: |
           echo "Listing files in GitHub Actions runner before rsync:"
           ls -la
-          rsync -avzr -e "ssh -o StrictHostKeyChecking=no" --exclude '__pycache__' --exclude '.git' --exclude '.gitignore' --exclude '.env.sample' ./ ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }}:${{ secrets.DEPLOY_DIR }}
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+          rsync -avzr -e "ssh -o StrictHostKeyChecking=no" --exclude '__pycache__' --exclude '.git' --exclude '.gitignore' --exclude '.env.sample' ./ test@${{ secrets.SERVER_IP }}:${{ secrets.DEPLOY_DIR }}
+          ssh -o StrictHostKeyChecking=no test@${{ secrets.SERVER_IP }} << 'EOF'
           echo "After rsync, listing contents of ${{ secrets.DEPLOY_DIR }}:"
           ls -la ${{ secrets.DEPLOY_DIR }}
           ls -la ${{ secrets.DEPLOY_DIR }}/config 2>/dev/null || echo "config directory not found"
@@ -73,7 +75,7 @@ jobs:
 
       - name: Install dependencies on server
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+          ssh -o StrictHostKeyChecking=no test@${{ secrets.SERVER_IP }} << 'EOF'
           echo "Before cd, current directory:"
           pwd
           ls -la
